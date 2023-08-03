@@ -1,13 +1,17 @@
 /** \file lcddemo.c
  *  \brief A simple demo that draws a string and square
  */
-
 #include <msp430.h>
 #include <libTimer.h>
 #include "lcdutils.h"
 #include "lcddraw.h"
+#include "buzzer.h"
+#include "buzzer.c"
+//#include "stateMachine.h"
 
-  
+//#include "stateMachine.h"
+
+
 // WARNING: LCD DISPLAY USES P1.0.  Do not touch!!! 
 
 #define LED BIT6		/* note that bit zero req'd for display */
@@ -15,11 +19,11 @@
 //#define SWITCHES 15
 
 
-#define SW1 BIT3
-#define SW2 BIT1
-#define SW3 BIT2
-
-#define SWITCHES (SW1 | SW2 | SW3)
+#define SW1 BIT1
+#define SW2 BIT2
+#define SW3 BIT3
+#define SW4 BIT4
+#define SWITCHES (SW1 | SW2 | SW3 | SW4)
 
 void drawTriangle(int limit, int controlRow, int controlCol)
 {
@@ -35,7 +39,7 @@ void drawTriangle(int limit, int controlRow, int controlCol)
    for (int j = 0; j < limit; j++)
    {
      for (int i = 0; i <=fill; i++){
-       drawPixel(fillCol, fillRow, COLOR_WHITE);
+       drawPixel(fillCol, fillRow, COLOR_BLUE);
        fillCol++;
      }
      distance++;
@@ -53,21 +57,57 @@ void drawTriangle(int limit, int controlRow, int controlCol)
    for (int j = 0; j < limit; j++)
    {
      for (int i = 0; i <=fill; i++){
-       drawPixel(fillCol, fillRow, COLOR_WHITE);
+       drawPixel(fillCol, fillRow, COLOR_PURPLE);
        fillCol++;
      }
      distance++;
      fillCol = distance;
      fillRow++;
      fill -= 2;
-   }
-  
-  
+   }  
  }
 
-
-//static char
 void
+moveTriangle(int limit, int row, int col){
+  
+  drawTriangle(limit, row +1, col+1);
+    
+}
+
+void
+state_machine(int state)
+{ 
+    switch (state)
+    {
+    case 2:
+      clearScreen(COLOR_BLACK);
+      drawTriangle(40,40,40);
+      state = 0;
+      break;
+
+    case 3:
+      enableWDTInterrupts();
+      clearScreen(COLOR_STEEL_BLUE);
+      buzzer_init();
+      generateSound(6000);
+      drawString5x7(20,40, "Welcome to my", COLOR_WHITE, COLOR_STEEL_BLUE);
+      drawString5x7(20,60, "project 3!!", COLOR_WHITE, COLOR_STEEL_BLUE);
+      state =0;
+      break;
+      
+    case 1:
+      clearScreen(COLOR_CYAN);
+      moveTriangle(40,40,40);
+      state = 0;
+      break;
+    default:
+      break;
+    }
+
+}
+
+
+static char
 switch_update_interrupt_sense()
 {
   char p2val = P2IN;
@@ -75,25 +115,32 @@ switch_update_interrupt_sense()
   P2IES |= (p2val & SWITCHES);	/* if switch up, sense down */
   P2IES &= (p2val | ~SWITCHES);	/* if switch down, sense up */
 
-  if (p2val & SW3){
-    clearScreen(COLOR_BLACK);
-    drawTriangle(45,50,50);
-    
-  }
-
-
-  //return p2val;
+  return p2val;
 }
+
+
+void
+switch_interrupt_handler()
+{
+  char p2val = switch_update_interrupt_sense();
+  //switches = ~p2val & SWITCHES;
+  
+  if (p2val & SW1 ? 0: 1){
+    state_machine(1);
+  }
+  if (p2val & SW2 ? 0: 1){
+    state_machine(2);
+  }
+  if (p2val & SW3 ? 0: 1){
+    state_machine(3);
+  }
+}
+
+
 
 int redrawScreen = 1;
 
-
-
-
-
-
 int switches = 0;
-
 
 void 
 switch_init()			/* setup switch */
@@ -103,40 +150,18 @@ switch_init()			/* setup switch */
   P2OUT |= SWITCHES;		/* pull-ups for switches */
   P2DIR &= ~SWITCHES;		/* set switches' bits for input */
   switch_update_interrupt_sense();
+  switch_interrupt_handler();
 }
 
 
-/*
-void
-switch_interrupt_handler()
-{
-  char p2val = switch_update_interrupt_sense();
-  switches = ~p2val & SWITCHES;
 
-  if (switches & SWITCHES) { 	// a switch is depresssed 
-    redrawScreen = 1;
-    
-    
-    
-    for (char swNum = 0; swNum < 4; swNum++) { // respond to lowest button pressed 
-      int swFlag = 1 << swNum;
-      if (switches & swFlag) {
-	current_position = swNum;
-	drawTriangle;
-	break;
-      }
-    }
-    
-  }
-}
-*/
 
 // Switch on S2 
 void
 __interrupt_vec(PORT2_VECTOR) Port_2(){
   if (P2IFG & SWITCHES) {	      // did a button cause this interrupt? 
     P2IFG &= ~SWITCHES;		      // clear pending sw interrupts 
-    //switch_interrupt_handler();	// single handler for all switches
+    switch_interrupt_handler();	// single handler for all switches
     switch_update_interrupt_sense();
   }
 }
@@ -146,38 +171,18 @@ __interrupt_vec(PORT2_VECTOR) Port_2(){
 int
 main()
 {
-
-
   P1DIR |= LED;		// Green led on when CPU on 
-  P1OUT |= LED;
-  
-  
+  P1OUT |= LED; 
   switch_init();
-  
   enableWDTInterrupts();      //enable periodic interrupt 
   or_sr(0x8);	              //GIE (enable interrupts) 
 
-  /*
-  clearScreen(BG_COLOR);
-  while (1) {			// forever 
-    if (redrawScreen) {
-      redrawScreen = 0;
-      update_shape();
-    }
-    P1OUT &= ~LED;	// led off 
-    or_sr(0x10);	// CPU OFF 
-    P1OUT |= LED;	// led on 
-  }
-
-  */
-  
   configureClocks();
   lcd_init();
   u_char width = screenWidth, height = screenHeight;
-
   clearScreen(COLOR_ORANGE);
 
-  //drawString5x7(40,10, "Cachetonsote", COLOR_GREEN, COLOR_BLACK);
+  
 
   //fillRectangle(30,30, 60, 60, COLOR_ORANGE);
   int controlCol = 61;
@@ -185,105 +190,10 @@ main()
   int limit = 30;
   int c = 0;
   int r = 0;
-  drawTriangle(30, 30, 30);
-/*
-
-  for (int i = 0; i<limit; i++)
-  {
-    drawPixel(controlCol, controlRow, COLOR_WHITE);
-    controlCol--;
-    controlRow++;
-  }
-  controlRow =61;
-    controlCol = 61;
-  for (int i = 0; i<limit; i++)
-  {
-    drawPixel(controlCol, controlRow, COLOR_WHITE);
-    controlCol++;
-    controlRow++;
-  }
-  drawTriangle(30,60,30);
-  
-*/
+  drawTriangle(20, 20, 20);
 
 }
 
-
-
-/*
-void wdt_c_handler()
-{
-  static int sec2Count = 0;
-  static int sec1Count = 0;
-  if (sec2Count++ >= 125) {		// 2/sec 
-    sec2Count = 0;
-    current_color = (current_color+1) % NUM_SQCOLORS;
-    redrawScreen = 1;
-  }
-  if (sec1Count++ >= 250) {		// 1/sec 
-    sec1Count = 0;
-    current_position = (current_position+1) % NUM_POSITIONS;
-    redrawScreen = 1;
-  }
-}
-*/
-
- //void update_shape();
-
- /*
-void main()
-{
-  
-  P1DIR |= LED;		// Green led on when CPU on 
-  P1OUT |= LED;
-  configureClocks();
-  lcd_init();
-  switch_init();
-  
-  enableWDTInterrupts();      //enable periodic interrupt 
-  or_sr(0x8);	              //GIE (enable interrupts) 
-  
-  clearScreen(BG_COLOR);
-  while (1) {			// forever 
-    if (redrawScreen) {
-      redrawScreen = 0;
-      update_shape();
-    }
-    P1OUT &= ~LED;	// led off 
-    or_sr(0x10);	// CPU OFF 
-    P1OUT |= LED;	// led on 
-  }
-}
- */
-    
-/*  
-void
-update_shape()
-{
-  static char last_position = 0, last_color = 0;
-  redrawScreen = 0;
-  int pos, color;
-  and_sr(~8);  // mask interrupts (GIE = 0)
-  pos = current_position;	//read state variables 
-  color = current_color;
-  or_sr(8); // unmask interrupts
-  if (pos == last_position && color == last_color) // nothing to redraw 
-    return;
-
-  // erase old shape 
-  short col = positions[last_position].col;
-  short row = positions[last_position].row;
-  if (pos != last_position)    // erase if position changed 
-    fillRectangle(col-5, row-5, 10, 10, BG_COLOR); 
-  // draw new shape 
-  col = positions[pos].col;
-  row = positions[pos].row;
-  fillRectangle(col-5, row-5, 10, 10, sqColors[color]); // draw new shape 
-  // remember color & pos for next redraw 
-  last_position = pos;
-  last_color = color;
-}
-*/
 
 
 
